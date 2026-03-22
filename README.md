@@ -35,13 +35,24 @@
 - 開機後自動啟動（透過 Windows 排程任務 `OpenClaw-WSL-Gateway`）
 - 用 Telegram 對你的 Bot 傳訊息，即可開始使用
 
+## 啟動 / 停止
+
+| 操作 | 方式 |
+|------|------|
+| 啟動 | 雙擊 `windows/START-OPENCLAW.bat` |
+| 停止 | 雙擊 `windows/STOP-OPENCLAW.bat` |
+
+停止後 bot 不會回應，也不會被自動重啟。下次要用時再雙擊 START 即可。
+
 ## 架構
 
 ```
 windows/
 ├── START-HERE.bat          # 入口，請求管理員權限後啟動安裝
 ├── install-openclaw.ps1    # PowerShell 安裝腳本（WSL2、distro、排程）
-└── setup-openclaw.sh       # Linux 端設定（Node.js、OpenClaw、設定檔）
+├── setup-openclaw.sh       # Linux 端設定（Node.js、OpenClaw、設定檔）
+├── START-OPENCLAW.bat      # 雙擊啟動 OpenClaw
+└── STOP-OPENCLAW.bat       # 雙擊停止 OpenClaw
 ```
 
 ## License

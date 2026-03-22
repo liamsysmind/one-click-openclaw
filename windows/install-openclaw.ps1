@@ -287,11 +287,14 @@ function Show-Summary {
     Write-Host ""
     Write-Host "  Commands (run in PowerShell):" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "    Start:   wsl -d $DISTRO openclaw gateway start"   -ForegroundColor White
-    Write-Host "    Stop:    wsl -d $DISTRO openclaw gateway stop"    -ForegroundColor White
-    Write-Host "    Status:  wsl -d $DISTRO openclaw gateway status"  -ForegroundColor White
-    Write-Host "    Check:   wsl -d $DISTRO openclaw doctor"          -ForegroundColor White
-    Write-Host "    Web UI:  http://localhost:18789"                   -ForegroundColor White
+    Write-Host "    Start:   wsl -d $DISTRO bash -lc 'openclaw gateway start'"   -ForegroundColor White
+    Write-Host "    Stop:    wsl -d $DISTRO bash -lc 'openclaw gateway stop'"    -ForegroundColor White
+    Write-Host "    Status:  wsl -d $DISTRO bash -lc 'openclaw gateway status'"  -ForegroundColor White
+    Write-Host "    Check:   wsl -d $DISTRO bash -lc 'openclaw doctor'"          -ForegroundColor White
+    Write-Host "    Web UI:  http://localhost:18789"                              -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Or double-click:" -ForegroundColor Cyan
+    Write-Host "    START-OPENCLAW.bat / STOP-OPENCLAW.bat" -ForegroundColor White
     Write-Host ""
 }
 
