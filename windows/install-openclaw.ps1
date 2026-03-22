@@ -1,4 +1,4 @@
-#Requires -RunAsAdministrator
+﻿#Requires -RunAsAdministrator
 # ============================================================
 #  OpenClaw Windows Installer (WSL2)
 #  Author: Liam
@@ -87,18 +87,74 @@ function Install-WSL2 {
 }
 
 function Install-Distro {
-    Write-Step "2" "Setting up OpenClaw environment..."
+    Write-Step "3" "Setting up OpenClaw environment..."
 
     if (Test-DistroInstalled) {
-        Write-Info "Environment '$DISTRO' already exists."
-    } else {
+        Write-Warn "偵測到已安裝的 '$DISTRO' 環境。"
+        Write-Host ""
+        Write-Host "  請選擇：" -ForegroundColor Cyan
+        Write-Host "    1) 重新安裝（刪除後重裝）" -ForegroundColor White
+        Write-Host "    2) 僅解除安裝（刪除後結束）" -ForegroundColor White
+        Write-Host "    3) 不動，繼續" -ForegroundColor White
+        Write-Host ""
+        $choice = Read-Host "      輸入 1、2 或 3"
+        switch ($choice) {
+            "1" {
+                Write-Info "正在移除 '$DISTRO'..."
+                wsl --unregister $DISTRO 2>&1 | Out-Null
+                Write-Info "已移除。開始重新安裝..."
+            }
+            "2" {
+                Write-Info "正在移除 '$DISTRO'..."
+                wsl --unregister $DISTRO 2>&1 | Out-Null
+                Write-Host ""
+                Write-Host "  已解除安裝。" -ForegroundColor Green
+                Read-Host "  按 Enter 關閉"
+                exit 0
+            }
+            default {
+                Write-Info "保留現有環境。"
+                return
+            }
+        }
+    }
+
+    if (-Not (Test-DistroInstalled)) {
         Write-Info "Creating environment '$DISTRO'..."
 
-        wsl --install -d Ubuntu-24.04 --name $DISTRO --no-launch 2>&1
+        # Set console to UTF-8 so WSL's Chinese output displays correctly
+        $prevCP = [Console]::OutputEncoding
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        chcp 65001 > $null 2>&1
 
-        if ($LASTEXITCODE -ne 0) {
-            wsl --install -d Ubuntu-24.04 --no-launch 2>&1
+        # Suppress WSL stderr warnings (red text) — they are not fatal
+        $prevEAP = $ErrorActionPreference
+        $ErrorActionPreference = "SilentlyContinue"
+
+        # Run wsl install in background with spinner
+        $installJob = Start-Job -ScriptBlock {
+            param($d)
+            wsl --install -d Ubuntu-24.04 --name $d --no-launch *> $null
+            if ($LASTEXITCODE -ne 0) {
+                wsl --install -d Ubuntu-24.04 --no-launch *> $null
+            }
+        } -ArgumentList $DISTRO
+
+        $spinner = @('|', '/', '-', '\')
+        $i = 0
+        Write-Host ""
+        while ($installJob.State -eq 'Running') {
+            Write-Host -NoNewline "`r      $($spinner[$i % 4]) Installing Ubuntu 24.04... (this may take a few minutes)"
+            Start-Sleep -Milliseconds 300
+            $i++
         }
+        Write-Host "`r      Done.                                                    "
+
+        Receive-Job $installJob -ErrorAction SilentlyContinue | Out-Null
+        Remove-Job $installJob
+
+        $ErrorActionPreference = $prevEAP
+        [Console]::OutputEncoding = $prevCP
 
         Write-Info "Setting up user..."
 
@@ -111,7 +167,10 @@ function Install-Distro {
             (Get-ItemProperty $_.PSPath).DistributionName -eq $DISTRO
         }
         if ($distroKey) {
+            $prevEAP2 = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
             $uid = wsl -d $DISTRO -- id -u $username 2>&1
+            $ErrorActionPreference = $prevEAP2
             if ($uid -match "^\d+$") {
                 Set-ItemProperty -Path $distroKey.PSPath -Name "DefaultUid" -Value ([int]$uid)
                 Write-Info "User: $username / Password: $password"
@@ -127,7 +186,7 @@ function Install-Distro {
 }
 
 function Set-WSLConfig {
-    Write-Step "3" "Configuring memory limits..."
+    Write-Step "2" "Configuring memory limits..."
 
     $totalRAM = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
     $wslRAM = [math]::Min(8, [math]::Max(4, [math]::Floor($totalRAM / 2)))
@@ -206,9 +265,12 @@ function Start-OpenClawSetup {
         exit 1
     }
 
-    $wslScriptPath = wsl -d $DISTRO wslpath -u ($SETUP_SCRIPT -replace '\\', '\\')
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $wslScriptPath = wsl -d $DISTRO wslpath -u ($SETUP_SCRIPT -replace '\\', '\\') 2>&1
+    $ErrorActionPreference = $prevEAP
 
-    wsl -d $DISTRO -- bash -c "cp '$wslScriptPath' /tmp/setup-openclaw.sh; chmod +x /tmp/setup-openclaw.sh; /tmp/setup-openclaw.sh"
+    wsl -d $DISTRO -u openclaw -- bash -c "cp '$wslScriptPath' /tmp/setup-openclaw.sh; chmod +x /tmp/setup-openclaw.sh; /tmp/setup-openclaw.sh"
 
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Setup encountered an error."
@@ -241,8 +303,8 @@ Write-Banner
 if (-Not (Test-WindowsVersion)) { exit 1 }
 
 Install-WSL2
-Install-Distro
 Set-WSLConfig
+Install-Distro
 Set-WSLAutoStart
 Start-OpenClawSetup
 Show-Summary

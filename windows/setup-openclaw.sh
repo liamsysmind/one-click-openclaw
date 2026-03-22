@@ -44,13 +44,12 @@ echo -e "  ${CYAN}--- Gemini API Key（免費）---${NC}"
 echo ""
 echo "  這把 key 讓你的 AI 助理能用 Google 搜尋資料。"
 echo ""
-echo -e "  ${GRAY}申請方式：${NC}"
+echo -e "  ${GRAY}申請方式（不需要信用卡）：${NC}"
 echo -e "  ${GRAY}  1. 用瀏覽器打開 https://aistudio.google.com${NC}"
 echo -e "  ${GRAY}  2. 用你的 Google 帳號登入${NC}"
-echo -e "  ${GRAY}  3. 點左邊選單的「Get API Key」${NC}"
+echo -e "  ${GRAY}  3. 點左邊的「Get API Key」${NC}"
 echo -e "  ${GRAY}  4. 點「Create API Key」${NC}"
-echo -e "  ${GRAY}  5. 選一個 Google Cloud 專案（或建立新的）${NC}"
-echo -e "  ${GRAY}  6. 複製產生的 key（開頭是 AIza...）${NC}"
+echo -e "  ${GRAY}  5. 複製產生的 key（開頭是 AIza...）${NC}"
 echo ""
 read -rp "  貼上你的 Gemini API Key: " GEMINI_KEY
 echo ""
@@ -61,19 +60,22 @@ echo ""
 echo "  這讓你可以用 Telegram App 跟 AI 助理對話。"
 echo ""
 echo -e "  ${GRAY}建立方式：${NC}"
-echo -e "  ${GRAY}  1. 打開 Telegram（手機或電腦都可以）${NC}"
-echo -e "  ${GRAY}  2. 搜尋 ${NC}@BotFather${GRAY} 並打開對話${NC}"
-echo -e "  ${GRAY}  3. 傳送 ${NC}/newbot"
-echo -e "  ${GRAY}  4. BotFather 會問你 bot 的名稱${NC}"
-echo -e "  ${GRAY}     輸入一個名稱（例如 My AI Assistant）${NC}"
-echo -e "  ${GRAY}  5. 再問 username${NC}"
-echo -e "  ${GRAY}     輸入一個名稱，必須以 bot 結尾${NC}"
+echo -e "  ${GRAY}  1. 手機下載 Telegram，安裝${NC}"
+echo -e "  ${GRAY}  2. 搜尋 ${NC}@BotFather${GRAY}，打開對話${NC}"
+echo -e "  ${GRAY}  3. 傳送 ${NC}/newbot${GRAY}，建立一個 AI bot${NC}"
+echo -e "  ${GRAY}     這個 bot 就是你未來跟 AI 對話的窗口${NC}"
+echo -e "  ${GRAY}  4. 它會問 bot 的名稱，隨便取（例如 My AI Assistant）${NC}"
+echo -e "  ${GRAY}  5. 再問 username，這是系統代號，必須以 bot 結尾${NC}"
 echo -e "  ${GRAY}     （例如 my_ai_helper_bot）${NC}"
-echo -e "  ${GRAY}  6. BotFather 會回覆一串 token，格式像：${NC}"
+echo -e "  ${GRAY}     實際對話窗看到的名稱是第 4 步取的${NC}"
+echo -e "  ${GRAY}  6. 它會回覆一串 token，格式像：${NC}"
 echo "     7123456789:AAH-xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-echo -e "  ${GRAY}  7. 長按（手機）或選取（電腦）複製這串 token${NC}"
+echo -e "  ${GRAY}  7. 複製這串 token${NC}"
+echo -e "  ${GRAY}     手機上可以用 email 寄給自己，在電腦收信取得${NC}"
 echo ""
-read -rp "  貼上你的 Telegram Bot Token: " TG_TOKEN
+echo -e "  ${YELLOW}沒有 Telegram？直接按 Enter 跳過，之後可以用 Web UI（http://localhost:18789）。${NC}"
+echo ""
+read -rp "  貼上你的 Telegram Bot Token（沒有就直接按 Enter）: " TG_TOKEN
 echo ""
 
 echo -e "  ${GREEN}資料收集完成！開始自動安裝...${NC}"
@@ -111,7 +113,9 @@ if [ ! -d "$HOME/.npm-global" ]; then
     npm config set prefix "$HOME/.npm-global"
 fi
 if ! echo "$PATH" | grep -q "$HOME/.npm-global/bin"; then
-    echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> "$HOME/.bashrc"
+    # Write to .profile so it works in both interactive and non-interactive shells
+    # (.bashrc has an early exit for non-interactive shells on Ubuntu)
+    echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> "$HOME/.profile"
     export PATH="$HOME/.npm-global/bin:$PATH"
 fi
 info "Node.js $(node --version) 完成。"
@@ -135,16 +139,34 @@ step "5" "寫入設定..."
 mkdir -p "$OPENCLAW_DIR"
 
 CONFIG='{}'
-CONFIG=$(echo "$CONFIG" | jq '.env = {}')
+CONFIG=$(echo "$CONFIG" | jq '
+    .env = {} |
+    .gateway = {
+        "port": 18789,
+        "mode": "local",
+        "bind": "loopback"
+    } |
+    .agents.defaults.workspace = "'"$OPENCLAW_DIR"'/workspace" |
+    .session.dmScope = "per-channel-peer"
+')
 if [ -n "${GEMINI_KEY:-}" ]; then
     CONFIG=$(echo "$CONFIG" | jq --arg k "$GEMINI_KEY" '.env.GEMINI_API_KEY = $k')
     info "Gemini API Key 已寫入。"
 fi
 if [ -n "${TG_TOKEN:-}" ]; then
-    export TELEGRAM_BOT_TOKEN="$TG_TOKEN"
-    info "Telegram Bot Token 已設定。"
+    CONFIG=$(echo "$CONFIG" | jq --arg t "$TG_TOKEN" '
+        .channels.telegram = {
+            "enabled": true,
+            "dmPolicy": "pairing",
+            "botToken": $t,
+            "groupPolicy": "allowlist",
+            "streaming": "partial"
+        }
+    ')
+    info "Telegram Bot Token 已寫入。"
 fi
 echo "$CONFIG" > "$OPENCLAW_DIR/openclaw.json"
+chmod 600 "$OPENCLAW_DIR/openclaw.json"
 info "設定檔已建立。"
 
 step "6" "建立自動重啟機制..."
@@ -173,6 +195,24 @@ if pgrep -f "openclaw.*gateway" > /dev/null 2>&1; then
     echo -e "  ${GREEN}=============================================${NC}"
     echo -e "  ${GREEN} OpenClaw 啟動成功！${NC}"
     echo -e "  ${GREEN}=============================================${NC}"
+
+    # 顯示 Gateway Token，讓使用者可以貼到 Web UI
+    GW_TOKEN=$(jq -r '.gateway.auth.token // empty' "$OPENCLAW_DIR/openclaw.json" 2>/dev/null || true)
+    if [ -n "$GW_TOKEN" ]; then
+        echo ""
+        echo -e "  ${YELLOW}=============================================${NC}"
+        echo -e "  ${YELLOW} Gateway Token（Web UI 登入用）${NC}"
+        echo -e "  ${YELLOW}=============================================${NC}"
+        echo ""
+        echo -e "  ${RED}請把這串 Token 記下來！截圖或複製到記事本。${NC}"
+        echo -e "  ${RED}之後用瀏覽器開 Web UI 時需要它登入。${NC}"
+        echo ""
+        echo -e "  ${GREEN}$GW_TOKEN${NC}"
+        echo ""
+        echo -e "  使用方式：打開 ${CYAN}http://localhost:18789${NC}"
+        echo -e "  → 進入 ${CYAN}Control UI Settings${NC} → 貼上 Token"
+        echo ""
+    fi
 else
     warn "Gateway 可能沒有正常啟動。"
     warn "執行 openclaw doctor 檢查問題。"
@@ -188,15 +228,34 @@ echo -e "  ${CYAN}=============================================${NC}"
 echo ""
 echo -e "  ${CYAN}【步驟 A】連接你的 ChatGPT 帳號${NC}"
 echo ""
-echo "  執行以下指令："
-echo -e "    ${GREEN}openclaw onboard --auth-choice openai-codex${NC}"
+echo -e "  ${YELLOW}安全提醒：${NC}"
+echo -e "  ${GRAY}  OpenClaw 是開源專案，AI 運算透過 ChatGPT 雲端進行。${NC}"
+echo -e "  ${GRAY}  你傳給 AI 的內容會經過 OpenAI 伺服器。${NC}"
+echo -e "  ${GRAY}  請勿傳送機密資料（密碼、公司內部文件等）。${NC}"
 echo ""
-echo -e "  ${GRAY}  1. 瀏覽器會自動打開 ChatGPT 登入頁面${NC}"
-echo -e "  ${GRAY}  2. 登入你的 ChatGPT 帳號，按「授權」${NC}"
-echo -e "  ${GRAY}  3. 瀏覽器顯示「Authentication successful」${NC}"
-echo -e "  ${YELLOW}  4. 如果 terminal 沒有自動繼續：${NC}"
-echo -e "  ${YELLOW}     把瀏覽器網址列的完整網址複製，${NC}"
-echo -e "  ${YELLOW}     貼回這裡按 Enter${NC}"
+echo -e "  ${GRAY}  接下來會自動開啟瀏覽器，請：${NC}"
+echo -e "  ${GRAY}  1. 登入你的 ChatGPT 帳號，按「授權」${NC}"
+echo -e "  ${GRAY}  2. 瀏覽器顯示「Authentication successful」就完成了${NC}"
+echo -e "  ${YELLOW}  3. 如果畫面顯示「Paste the authorization code」：${NC}"
+echo -e "  ${YELLOW}     把瀏覽器網址列的完整網址複製，貼回這裡按 Enter${NC}"
+echo -e "  ${GRAY}     （網址開頭像 http://localhost:1455/auth/callback?code=...）${NC}"
+echo ""
+echo -e "  ${YELLOW}操作提示：${NC}"
+echo -e "  ${GRAY}  畫面中如果出現選單：${NC}"
+echo -e "  ${GRAY}  - 按${NC} 空白鍵 ${GRAY}選擇／取消選擇項目${NC}"
+echo -e "  ${GRAY}  - 按${NC} Enter ${GRAY}確定送出${NC}"
+echo ""
+echo -e "  ${YELLOW}按 Enter 開始連接 ChatGPT...${NC}"
+read -rp "  "
+openclaw onboard \
+    --auth-choice openai-codex \
+    --flow quickstart \
+    --accept-risk \
+    --skip-channels \
+    --skip-skills \
+    --skip-search \
+    --skip-daemon \
+    --skip-ui || true
 echo ""
 
 if [ -n "${TG_TOKEN:-}" ]; then
@@ -204,9 +263,30 @@ if [ -n "${TG_TOKEN:-}" ]; then
     echo ""
     echo -e "  ${GRAY}  1. 打開 Telegram，搜尋你剛建立的 bot${NC}"
     echo -e "  ${GRAY}  2. 對它發一條訊息（例如「你好」）${NC}"
-    echo -e "  ${GRAY}  3. Bot 會回覆一段配對網址${NC}"
-    echo -e "  ${YELLOW}  4. 把那段網址複製，貼回 terminal 按 Enter${NC}"
-    echo -e "  ${GRAY}  5. 配對完成！之後只有你能跟這個 bot 對話${NC}"
+    echo -e "  ${GRAY}  3. Bot 會回覆一組配對碼（Pairing Code）${NC}"
+    echo ""
+    echo -e "  ${YELLOW}  完成後按 Enter，程式會自動幫你配對...${NC}"
+    read -rp "  按 Enter 繼續..."
+    echo ""
+
+    # 等待配對請求出現
+    sleep 3
+
+    # 自動偵測並批准配對請求
+    # 配對碼格式：大寫字母開頭 + 英數字，例如 S3GXBUW5
+    PAIR_CODE=$(openclaw pairing list 2>&1 | grep -oE '[A-Z][A-Z0-9]{5,9}' | head -1)
+    if [ -n "$PAIR_CODE" ]; then
+        echo -e "  偵測到配對請求：${GREEN}$PAIR_CODE${NC}"
+        openclaw pairing approve "$PAIR_CODE" 2>&1
+        echo ""
+        echo -e "  ${GREEN}配對完成！之後只有你能跟這個 bot 對話。${NC}"
+    else
+        warn "沒有偵測到配對請求。"
+        echo -e "  ${GRAY}  請確認你已經在 Telegram 對 bot 發了訊息。${NC}"
+        echo -e "  ${GRAY}  之後可以手動執行：${NC}"
+        echo -e "    ${GREEN}openclaw pairing list${NC}"
+        echo -e "    ${GREEN}openclaw pairing approve <配對碼>${NC}"
+    fi
     echo ""
 fi
 
