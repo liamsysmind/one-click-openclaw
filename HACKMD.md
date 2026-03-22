@@ -183,8 +183,9 @@ Open: https://auth.openai.com/oauth/authorize?...
 ├────────────────────────────────────────────────────────────────────────╯
 │
 └  Onboarding complete. Use the dashboard link above to control OpenClaw.
+```
 
-> **請按一下 Enter 或是 ctrl-c**，（不會中斷安裝，只是跳過這個畫面），就會進入下一步的 Telegram 配對頁面。
+**請按一下 Enter 或是 ctrl-c**（不會中斷安裝，只是跳過這個畫面），就會進入下一步的 Telegram 配對頁面。
 
 ### 配對 Telegram Bot
 
