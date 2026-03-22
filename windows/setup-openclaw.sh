@@ -273,8 +273,8 @@ if [ -n "${TG_TOKEN:-}" ]; then
     sleep 3
 
     # 自動偵測並批准配對請求
-    # 配對碼格式：大寫字母開頭 + 英數字，例如 S3GXBUW5
-    PAIR_CODE=$(openclaw pairing list 2>&1 | grep -oE '[A-Z][A-Z0-9]{5,9}' | head -1)
+    # 配對碼格式：大寫字母與數字組合（6-10 碼），例如 7YQ5LY3Q、S3GXBUW5
+    PAIR_CODE=$(openclaw pairing list 2>&1 | grep -oE '[A-Z0-9]{6,10}' | head -1)
     if [ -n "$PAIR_CODE" ]; then
         echo -e "  偵測到配對請求：${GREEN}$PAIR_CODE${NC}"
         openclaw pairing approve "$PAIR_CODE" 2>&1
